@@ -1,0 +1,8 @@
+body {
+    background-color: black;
+    color: lightgray;
+}
+
+h1, h2, h3, p {
+    color: lightgray;
+}
