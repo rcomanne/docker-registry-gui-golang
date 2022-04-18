@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app.kubernetes.io/name: docker-registry-gui
+  app.kubernetes.io/component: gui
+
+resources:
+#  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/rcomanne/docker-registry-gui/configuration"
-	"github.com/rcomanne/docker-registry-gui/docker"
+	"github.com/rcomanne/docker-registry-gui/pkg/configuration"
+	"github.com/rcomanne/docker-registry-gui/pkg/docker"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -14,21 +16,39 @@ import (
 	"time"
 )
 
+//go:embed assets/*
+//go:embed templates/*
+var content embed.FS
+
 var config configuration.Configuration
 var dockerClient *docker.Client
 
-func main() {
+func init() {
 	// load in the configuration
-	configure, err := configuration.Configure()
+	c, err := configuration.Configure()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	config = *configure
-	dockerClient = docker.NewClient(&configure.Docker)
+	config = *c
+	dockerClient = docker.NewClient(&config.Docker)
+	if dockerClient.Validate() {
+		log.Printf("successfully connected to registry %s", config.Docker.Registry)
+	} else {
+		log.Fatalf("failed to connect to registry %s", config.Docker.Registry)
+	}
+}
 
+func main() {
 	// create a router and add paths with handlers
 	router := mux.NewRouter().UseEncodedPath()
-	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("assets"))))
+
+	// add handler for static files
+	if assets, err := fs.Sub(content, "assets"); err != nil {
+		log.Fatalln(err)
+	} else {
+		router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
+	}
+
 	router.HandleFunc("/", homeHandler)
 	router.HandleFunc("/repositories", listRepositoriesHandler)
 	router.HandleFunc("/repositories/{repository}/tags", listRepositoryTagsHandler)
@@ -38,7 +58,6 @@ func main() {
 	router.PathPrefix("/").Handler(&catch)
 
 	// start the server
-
 	server := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
 		Handler: router,
@@ -52,13 +71,14 @@ func main() {
 		}
 	}()
 	log.Println("started docker-registry-gui")
+	log.Printf("now serving at %s", server.Addr)
 
 	// Listen for SIGINT and allow graceful shutdown
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(int64(time.Millisecond)*int64(configure.Server.GracefulTimeoutMs)))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(int64(time.Millisecond)*int64(config.Server.GracefulTimeoutMs)))
 	defer cancel()
 	server.Shutdown(ctx)
 	log.Println("shutting down docker-registry-gui")
@@ -67,7 +87,7 @@ func main() {
 
 func homeHandler(w http.ResponseWriter, _ *http.Request) {
 	// Load in the template
-	t := template.Must(template.ParseFiles("templates/index.gohtml"))
+	t := template.Must(template.ParseFS(content, "templates/index.gohtml"))
 
 	// Serve template
 	err := t.Execute(w, nil)
@@ -79,7 +99,7 @@ func listRepositoriesHandler(w http.ResponseWriter, _ *http.Request) {
 	repositories := dockerClient.ListRepositories()
 
 	// Load in the template
-	t := template.Must(template.ParseFiles("templates/list-repositories.gohtml"))
+	t := template.Must(template.ParseFS(content, "templates/list-repositories.gohtml"))
 
 	// Fill and serve the template
 	err := t.Execute(w, repositories)
@@ -94,7 +114,7 @@ func listRepositoryTagsHandler(w http.ResponseWriter, r *http.Request) {
 	repository := dockerClient.ListRepositoryTags(vars["repository"])
 
 	// load in the template
-	t := template.Must(template.ParseFiles("templates/list-repository-tags.gohtml"))
+	t := template.Must(template.ParseFS(content, "templates/list-repository-tags.gohtml"))
 
 	// fill and serve the template
 	err := t.Execute(w, repository)
@@ -124,7 +144,7 @@ func showRepositoryTagDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// load in the template
-	t := template.Must(template.ParseFiles("templates/show-repository-tag-details.gohtml"))
+	t := template.Must(template.ParseFS(content, "templates/show-repository-tag-details.gohtml"))
 
 	// fill and serve the template
 	err := t.Execute(w, data)
@@ -160,7 +180,7 @@ type catchAll struct {
 func (c *catchAll) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("catchAll caught request for URL [%s]", r.URL)
 	// load in the template
-	t := template.Must(template.ParseFiles("templates/errors/404.gohtml"))
+	t := template.Must(template.ParseFS(content, "templates/errors/404.gohtml"))
 
 	// create the data
 	data := map[string]string{

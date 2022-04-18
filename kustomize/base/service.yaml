@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-registry-gui
+spec:
+  ports:
+    - name: web
+      port: 8080
+      protocol: TCP
+      targetPort: web
+  type: ClusterIP

@@ -2,6 +2,16 @@ package docker
 
 import "time"
 
+type ErrorResponse struct {
+	Errors []Error `json:"errors"`
+}
+
+type Error struct {
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
+	Detail  interface{} `json:"detail"`
+}
+
 type Catalog struct {
 	Repositories []string `json:"repositories"`
 }

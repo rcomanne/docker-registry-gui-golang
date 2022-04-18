@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"github.com/imdario/mergo"
@@ -8,6 +9,9 @@ import (
 	"log"
 	"os"
 )
+
+//go:embed default_configuration.yaml
+var defaultConfig []byte
 
 type Configuration struct {
 	Server Server `yaml:"server"`
@@ -29,6 +33,10 @@ type Docker struct {
 	Password string `yaml:"password"`
 }
 
+func (d Docker) HasAuthentication() bool {
+	return d.Username != "" || d.Password != ""
+}
+
 func Configure() (*Configuration, error) {
 	// parse the flags passed along
 	flags, err := parseFlags()
@@ -37,16 +45,22 @@ func Configure() (*Configuration, error) {
 	}
 
 	// load default configuration
-	config, err := loadConfigurationFile("./default_configuration.yaml")
+	config, err := loadDefaultConfiguration()
 	if err != nil {
 		return nil, err
 	}
 
-	// load configuration from path
+	// load configuration from path if provided
 	if flags.configPath != "" {
+		// validate that file exists
+		if err := validateConfigurationPath(flags.configPath); err != nil {
+			return nil, err
+		}
+		// load file
 		if loadedConfiguration, err := loadConfigurationFile(flags.configPath); err != nil {
 			return nil, err
 		} else {
+			// and merge in into the default config
 			log.Println("merging loaded configuration with default")
 			if err := mergo.Merge(config, loadedConfiguration); err != nil {
 				return nil, err
@@ -54,21 +68,29 @@ func Configure() (*Configuration, error) {
 		}
 	}
 
+	// merge docker config from flags into config
 	if err := mergo.Merge(&config.Docker, flags.dockerConfig); err != nil {
 		return nil, err
 	}
 
-	if config.Docker.Port != 0 {
-		config.Docker.Address = fmt.Sprintf("%s%s:%d", config.Docker.Protocol, config.Docker.Registry, config.Docker.Port)
-	} else {
-		config.Docker.Address = fmt.Sprintf("%s%s", config.Docker.Protocol, config.Docker.Registry)
-	}
+	// create and set the docker address
+	createDockerAddress(&config.Docker)
 
-	if err := validateConfiguration(*config); err != nil {
+	// validate the configuration
+	if valid := validateConfiguration(*config); !valid {
 		return nil, err
 	}
 
 	return config, nil
+}
+
+func loadDefaultConfiguration() (*Configuration, error) {
+	config := &Configuration{}
+	if err := yaml.Unmarshal(defaultConfig, config); err != nil {
+		return nil, err
+	} else {
+		return config, nil
+	}
 }
 
 func loadConfigurationFile(configPath string) (*Configuration, error) {
@@ -100,39 +122,66 @@ func validateConfigurationPath(configPath string) error {
 	return nil
 }
 
-func validateConfiguration(config Configuration) error {
+func createDockerAddress(config *Docker) {
+	if config.Port != 0 {
+		config.Address = fmt.Sprintf("%s%s:%d", config.Protocol, config.Registry, config.Port)
+	} else {
+		config.Address = fmt.Sprintf("%s%s", config.Protocol, config.Registry)
+	}
+}
+
+func validateConfiguration(config Configuration) bool {
+	valid := true
+
 	// validate the provided server configuration
-	if err := validateServerConfiguration(config.Server); err != nil {
-		return err
+	if v := validateServerConfiguration(config.Server); !v {
+		valid = false
 	}
 
 	// validate the provided docker configuration
-	if err := validateDockerConfiguration(config.Docker); err != nil {
-		return err
+	if v := validateDockerConfiguration(config.Docker); !v {
+		valid = false
 	}
 
-	// no errors found, return nil
-	return nil
+	// no errors found, return true
+	return valid
 }
 
-func validateServerConfiguration(config Server) error {
+func validateServerConfiguration(config Server) bool {
+	valid := true
+
 	if config.Port == 0 {
-		return fmt.Errorf("[%d] is an invalid port", config.Port)
+		valid = false
+		log.Printf("[%d] is an invalid port", config.Port)
 	}
 
-	return nil
+	return valid
 }
 
-func validateDockerConfiguration(config Docker) error {
+func validateDockerConfiguration(config Docker) bool {
+	valid := true
+
+	// not every registry requires authentication, just log it
 	if config.Username == "" {
-		return fmt.Errorf("docker username is required")
+		log.Println("no docker username set")
 	}
 
+	// not every registry requires authentication, just log it
 	if config.Password == "" {
-		return fmt.Errorf("docker password is required")
+		log.Println("no docker password set")
 	}
 
-	return nil
+	if config.Registry == "" {
+		valid = false
+		log.Println("no docker registry provided to connect to")
+	}
+
+	if config.Protocol == "" {
+		valid = false
+		log.Println("empty docker registry protocol provided")
+	}
+
+	return valid
 }
 
 type Flags struct {
@@ -160,12 +209,6 @@ func parseFlags() (*Flags, error) {
 	flag.StringVar(&registryUsername, "registry-username", "", "username for the docker registry")
 
 	flag.Parse()
-
-	if configPath != "" {
-		if err := validateConfigurationPath(configPath); err != nil {
-			return nil, err
-		}
-	}
 
 	flags := Flags{
 		configPath: configPath,

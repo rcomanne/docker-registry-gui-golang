@@ -6,6 +6,6 @@ server:
 docker:
   protocol: https://
   registry:
-  port:
+  port: 0
   username:
   password:

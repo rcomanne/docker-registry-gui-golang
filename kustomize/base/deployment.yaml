@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-registry-gui
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: docker-registry-gui
+    spec:
+      containers:
+        - name: docker-registry-gui
+          image: docker.rcomanne.nl/docker-registry-gui:1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /config/configuration.yaml
+          volumeMounts:
+            - mountPath: /config
+              name: config
+          ports:
+            - containerPort: 8080
+              name: web
+              protocol: TCP
+      volumes:
+        - name: config
+          secret:
+            secretName: docker-registry-gui
+            optional: false
+            items:
+              - key: configuration.yaml
+                path: configuration.yaml
+      restartPolicy: Always

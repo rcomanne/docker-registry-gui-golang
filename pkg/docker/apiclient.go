@@ -3,7 +3,7 @@ package docker
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rcomanne/docker-registry-gui/configuration"
+	"github.com/rcomanne/docker-registry-gui/pkg/configuration"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -20,6 +20,29 @@ func NewClient(dockerConfig *configuration.Docker) *Client {
 		client:       &http.Client{},
 		dockerConfig: dockerConfig,
 	}
+}
+
+func (c *Client) Validate() bool {
+	valid := true
+
+	// build the request
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/v2", c.dockerConfig.Address), nil)
+	handleError(err)
+
+	// execute it
+	byteBody := c.doExecute(req)
+
+	// map the result
+	if string(byteBody) != "{}" {
+		var result ErrorResponse
+		err = json.Unmarshal(byteBody, &result)
+		for _, e := range result.Errors {
+			log.Printf("code = %s, message = %s", e.Code, e.Message)
+		}
+		valid = false
+	}
+
+	return valid
 }
 
 func (c *Client) ListRepositories() Catalog {
@@ -101,7 +124,9 @@ func (c *Client) GetBlob(repositoryName, digest string) Blob {
 
 func (c *Client) doExecute(req *http.Request) []byte {
 	// add basic auth to request
-	addAuthentication(req, c.dockerConfig)
+	if c.dockerConfig.HasAuthentication() {
+		addAuthentication(req, c.dockerConfig)
+	}
 
 	// do request
 	resp, err := c.client.Do(req)
