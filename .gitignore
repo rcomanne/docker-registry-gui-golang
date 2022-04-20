@@ -6,6 +6,9 @@
 !.vscode/extensions.json
 *.code-workspace
 
+### VisualStudioCode template development container
+.devcontainer/
+
 # Local History for Visual Studio Code
 .history/
 
@@ -100,3 +103,6 @@ fabric.properties
 # vendor/
 
 **/local_configuration.yaml
+
+### Github actions
+my.secrets
