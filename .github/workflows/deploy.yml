@@ -23,7 +23,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: rcommane/docker-registry-gui
+          images: rcomanne/docker-registry-gui
           tags: |
             type=ref,type=ref,event=tag
             type=semver,pattern={{version}}

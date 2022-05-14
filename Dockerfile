@@ -14,14 +14,14 @@ COPY . .
 RUN go mod download
 
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" ./cmd/docker-registry-gui && \
-    chmod a+x ./docker-registry-gui
+    chmod 0777 ./docker-registry-gui
 
 # The actual image to run the application
-FROM scratch
+FROM alpine:3
 
 # Copy the certs
 COPY --from=builder /etc/ssl/certs /etc/ssl/certs
 # Copy the binary
-COPY --from=builder /go/src/github.com/rcomanne/docker-registry-gui /go/bin/docker-registry-gui
+COPY --from=builder /go/src/github.com/rcomanne/docker-registry-gui/docker-registry-gui /docker-registry-gui
 
-ENTRYPOINT ["/go/bin/docker-registry-gui"]
+CMD ["/docker-registry-gui"]
