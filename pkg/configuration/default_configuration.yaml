@@ -4,7 +4,7 @@ server:
   gracefulTimeoutMs: 15000
 
 docker:
-  protocol: https://
+  protocol:
   registry:
   port: 0
   username:
